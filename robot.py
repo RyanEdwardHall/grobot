@@ -1,49 +1,41 @@
 from math import hypot
-from pyjoystick.sdl2 import Key, Joystick, run_event_loop
+from pyjoystick.sdl2 import Key, run_event_loop
 import gpiozero
 
-print('Booting Grobot v0.0.3')
-robot = gpiozero.Robot(left=(17,18), right=(27,22))
+print('Booting Grobot: hold onto your sandwiches')
 
-def print_add(joy):
-    print('Added', joy)
+class Grobot:
+    def __init__(self):
+        self.move = gpiozero.Robot(left=(17,18), right=(27,22))
+        self.actions = {
+            Key.HAT_CENTERED: self.move.stop,
+            Key.HAT_UP: self.move.forward,
+            Key.HAT_DOWN: self.move.backward,
+            Key.HAT_LEFT: self.move.left,
+            Key.HAT_RIGHT: self.move.right
+        }
+        self.vector = {'x': 0, 'y': 0}
+    def joy_added(joy):
+        print('Joystick Found: ', joy)
 
-def print_removed(joy):
-    print('Removed', joy)
+    def joy_removed(joy):
+        print('Joystick Removed: ', joy)
 
-vector = {'x': 0, 'y': 0}
-def key_received(key):
-    global vector
-    if key.keytype == Key.AXIS and key.number in [0,1]:
-        if key.number == 0:
-            vector['x'] = key.value
-        if key.number == 1:
-            vector['y'] = key.value
-        speed = hypot(vector['x'], vector['y'])
-        clampedSpeed = sorted([-1, speed, 1])[1]
-        leftMotorSpeed = clampedSpeed if vector['x'] >= 0 else clampedSpeed + vector['x']
-        rightMotorSpeed = clampedSpeed if vector['x'] <= 0 else clampedSpeed - vector['x']
-        if vector['y'] > 0:
-            leftMotorSpeed *= -1
-            rightMotorSpeed *= -1
-        robot.left(leftMotorSpeed)
-        robot.right(rightMotorSpeed)
-        print('Left Motor: ', round(leftMotorSpeed, 3))
-        print('Right Motor: ', round(rightMotorSpeed, 3))
-    if key.value == Key.HAT_CENTERED:
-        print('centered')
-        robot.stop()
-    if key.value == Key.HAT_UP:
-        print('forward')
-        robot.forward()
-    elif key.value == Key.HAT_DOWN:
-        print('down')
-        robot.backward()
-    if key.value == Key.HAT_LEFT:
-        print('left')
-        robot.left()
-    elif key.value == Key.HAT_RIGHT:
-        print('right')
-        robot.right()
+    def key_received(self, key):
+        if key.keytype == Key.AXIS and key.number in [0,1]:
+            direction = 'x' if key.number == 0 else 'y'
+            self.vector[direction] = round(key.value, 4)
+            speed = round(min(hypot(self.vector['x'], self.vector['y']), 1), 4)
 
-run_event_loop(print_add, print_removed, key_received)
+            if self.vector['y'] != 0:
+                move_func = self.move.forward if self.vector['y'] < 0 else self.move.backward
+                curve = 'curve_left' if self.vector['x'] < 0 else 'curve_right'
+                return move_func(speed, **{curve: abs(self.vector['x'])})
+            else:
+                return self.move.stop()
+        action = self.actions.get(key.value)
+        if action:
+            return action();
+
+g = Grobot()
+run_event_loop(g.joy_added, g.joy_removed, g.key_received)
